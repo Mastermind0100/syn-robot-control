@@ -67,10 +67,33 @@ class Inferer:
 
         LOGGER.info("Switch model to deploy modality.")
 
+    def image_infer(self, img_src):
+        img, img_src = self.process_image(img_src, self.img_size, self.stride, self.half)
+        img = img.to(self.device)
+        if len(img.shape) == 3:
+            img = img[None]
+        start = time.time()
+        pred_results = self.model(img)
+        det = non_max_suppression(pred_results, conf_thres=0.4, iou_thres=0.45, classes=None, agnostic=False, max_det=1000)[0]
+        stop = time.time()
+        img_ori = img_src.copy()
+        assert img_ori.data.contiguous, 'Image needs to be contiguous. Please apply to input images with np.ascontiguousarray(im).'
+        if len(det):
+                det[:, :4] = self.rescale(img.shape[2:], det[:, :4], img_src.shape).round()
+                for *xyxy, conf, cls in reversed(det):
+                    class_num = int(cls)
+                    self.plot_box_and_label(img_ori, max(round(sum(img_ori.shape) / 2 * 0.003), 2), xyxy, label=None, color=self.generate_colors(class_num, True))
+
+                img_src = np.asarray(img_ori)
+        print(f"Time Taken: {stop-start}")
+        return img_src
+
+
     def infer(self, conf_thres, iou_thres, classes, agnostic_nms, max_det, save_dir, save_txt, save_img, hide_labels, hide_conf, view_img=True):
         ''' Model Inference and results visualization '''
         vid_path, vid_writer, windows = None, None, []
         fps_calculator = CalcFPS()
+        keyIn = cv2.waitKey(1)
         for img_src, img_path, vid_cap in tqdm(self.files):
             img, img_src = self.process_image(img_src, self.img_size, self.stride, self.half)
             img = img.to(self.device)
@@ -112,9 +135,16 @@ class Inferer:
                         class_num = int(cls)  # integer class
                         label = None if hide_labels else (self.class_names[class_num] if hide_conf else f'{self.class_names[class_num]} {conf:.2f}')
 
-                        self.plot_box_and_label(img_ori, max(round(sum(img_ori.shape) / 2 * 0.003), 2), xyxy, label, color=self.generate_colors(class_num, True))
+                        self.plot_box_and_label(img_ori, max(round(sum(img_ori.shape) / 2 * 0.003), 2), xyxy, label=None, color=self.generate_colors(class_num, True))
 
                 img_src = np.asarray(img_ori)
+
+            if keyIn != ord('q'):
+                print(f"Time Taken: {t2-t1}")
+                cv2.imshow("sample", img_src)
+                keyIn = cv2.waitKey(1)
+            else:
+                cv2.destroyAllWindows()
 
             # FPS counter
             fps_calculator.update(1.0 / (t2 - t1))
@@ -247,8 +277,8 @@ class Inferer:
             outside = p1[1] - h - 3 >= 0  # label fits outside box
             p2 = p1[0] + w, p1[1] - h - 3 if outside else p1[1] + h + 3
             cv2.rectangle(image, p1, p2, color, -1, cv2.LINE_AA)  # filled
-            cv2.putText(image, label, (p1[0], p1[1] - 2 if outside else p1[1] + h + 2), font, lw / 3, txt_color,
-                        thickness=tf, lineType=cv2.LINE_AA)
+            # cv2.putText(image, label, (p1[0], p1[1] - 2 if outside else p1[1] + h + 2), font, lw / 3, txt_color,
+            #             thickness=tf, lineType=cv2.LINE_AA)
 
     @staticmethod
     def font_check(font='./yolov6/utils/Arial.ttf', size=10):

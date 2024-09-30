@@ -3,6 +3,7 @@ import quaternion
 import numpy as np
 import os
 import cv2
+from yoloCode import yolo_get_frame
 
 os.environ['DEBUG'] = ''
 
@@ -97,8 +98,11 @@ while True:
     pred_frame = pred_imgs[0].squeeze().cpu().permute(1,2,0).numpy() * 0.5 + 0.5
     pred_frame = np.array(pred_frame)
 
-    cv2.imshow("original", temp)
-    cv2.imshow("generated", pred_frame)
+    yolo_orig = yolo_get_frame(temp)
+    yolo_new = yolo_get_frame(pred_frame)
+
+    cv2.imshow("original", yolo_orig)
+    cv2.imshow("generated", yolo_new)
     frame_counter += 1
     curr = time.time() - start
     print(f"Frame Counter: {frame_counter}, Time Elapsed: {curr}, FPS: {frame_counter//curr}")

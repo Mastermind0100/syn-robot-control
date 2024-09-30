@@ -2,5 +2,5 @@ modelcheckpoints/kitti
 modelcheckpoints/mp3d
 modelcheckpoints/realestate
 samples
-yolo/runs
-yolo/yolov6m.pt
+runs
+yolov6m.pt

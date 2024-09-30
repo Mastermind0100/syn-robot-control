@@ -63,7 +63,7 @@ def run(weights=osp.join(ROOT, 'yolov6s.pt'),
         agnostic_nms=False,
         project=osp.join(ROOT, 'runs/inference'),
         name='exp',
-        hide_labels=False,
+        hide_labels=True,
         hide_conf=False,
         half=False,
         ):
