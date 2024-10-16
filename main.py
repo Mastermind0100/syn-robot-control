@@ -21,7 +21,7 @@ import time
 
 torch.backends.cudnn.enabled = True
 
-def compute_depth(frame1, frame2):
+def compute_depth(frame1, frame2, averages):
     focal_length = 26
     baseline = 0.12
     img1 = frame1
@@ -42,9 +42,13 @@ def compute_depth(frame1, frame2):
             total_depth += max_depth_in_row
             count += 1
 
-    average_depth = total_depth/count
-
-    return average_depth
+    try:    
+        average_depth = total_depth/count
+        averages.append(average_depth)
+    except:
+        average_depth = sum(averages)/len(averages)
+    finally:
+        return average_depth, averages
 
 def get_bounded_frame(frame: np.ndarray) -> np.ndarray:
     res = frame.copy()
@@ -105,7 +109,7 @@ transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-filename = 'samples/sample3.mp4'
+filename = 'samples/tape2.mp4'
 cap = cv2.VideoCapture(filename)
 
 fwidth  = int(cap.get(3))
@@ -117,6 +121,7 @@ res_cap = cv2.VideoWriter(output_filename, fourcc, 60.0, (fwidth, fheight))
 
 print("video loaded")
 frame_counter = 0
+averages = []
 start = time.time()
 while True:
     # im = Image.open('./demos/im.jpg')
@@ -168,9 +173,13 @@ while True:
     pred_frame = np.array(pred_frame)
     pred_frame = cv2.normalize(pred_frame, None, 255, 0, cv2.NORM_MINMAX, cv2.CV_8U)
     pred_frame = cv2.cvtColor(pred_frame, cv2.COLOR_RGB2BGR)
+    
+    frame_counter += 1
 
+    current_depth, averages = compute_depth(temp, pred_frame, averages.copy())
 
-    print(f"Average Depth: {compute_depth(temp, pred_frame)}")
+    # print(f"Averages: {averages}")
+    print(f"Average Depth: {sum(averages)/len(averages)}, Current Depth: {current_depth}")
 
     # pred_frame = yolo_get_frame(pred_frame)
     # temp = yolo_get_frame(temp)
@@ -180,14 +189,13 @@ while True:
     
     res_cap.write(pred_frame)
 
-    frame_counter += 1
-    curr = time.time() - start
-    print(f"Frame Counter: {frame_counter}, Time Elapsed: {curr}, FPS: {frame_counter//curr}")
-
     if cv2.waitKey(1) == ord('q'):
         break
     elif cv2.waitKey(1) == ord('p'):
         cv2.waitKey(-1)
+
+curr = time.time() - start
+print(f"Frame Counter: {frame_counter}, Time Elapsed: {curr}, FPS: {frame_counter//curr}")
 
 cap.release()
 res_cap.release()
