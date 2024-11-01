@@ -4,3 +4,4 @@ modelcheckpoints/realestate
 samples
 runs
 yolov6m.pt
+yolox_nano.pth
