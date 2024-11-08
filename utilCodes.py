@@ -3,6 +3,7 @@ import numpy as np
 import os
 import cv2
 import json 
+import math
 
 os.environ['DEBUG'] = ''
 
@@ -143,6 +144,7 @@ class SynSinModel:
 
 
     def compute_depth(self, frame1, frame2, averages):
+        average_depth = 0
         focal_length = 426
         baseline = 0.12
         img1 = frame1
@@ -196,6 +198,80 @@ class SynSinModel:
 
         return res
 
+class YoloDetector:
+    def __init__(self) -> None:
+        self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+
+    def get_bounding_box(self, frame:np.ndarray) -> dict:
+        res = self.model(frame)
+        data = json.loads(res.pandas().xyxy[0].to_json(orient="records"))
+        data = data[0] if len(data) > 0 else {'confidence':0}
+        return data
+
+class RobotController:
+    def __init__(self) -> None:
+        pass
+
+    def calculate_jacobian(q):
+        pi = 3.1415926
+        jacobian =  np.zeros([6,6])
+        d4=0.1333
+        d5=0.0997
+        d6=0.0996
+        a2=-0.425
+        a3=-0.3922
+        
+        jacobian[0,0] = (d4 * math.cos(q[0]))  + d6 * math.cos(q[0])*math.cos(q[4])  + (-a2) * math.cos(q[1])*math.sin(q[0]) - (-a3 * math.sin(q[0])*math.sin(q[1])*math.sin(q[2])) + (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4])) - (d5 * math.cos(q[1] + q[2])*math.sin(q[0])*math.sin(q[3]))  - (d5 * math.sin(q[1] + q[2])*math.cos(q[3])*math.sin(q[0])) + (-a3 * math.cos(q[1])*math.cos(q[2])*math.sin(q[0])) 
+
+        jacobian[0,1] = (math.cos(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + -a2 * math.sin(q[1]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4]))) 
+        jacobian[0,2] = (math.cos(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4])))
+
+        jacobian[0,3] = (math.cos(q[0])*(d6 * math.sin(q[1] + q[2] + q[3])*math.sin(q[4]) + d5 * math.cos(q[1] + q[2])*math.cos(q[3]) - d5 * math.sin(q[1] + q[2])*math.sin(q[3]))) 
+
+        jacobian[0,4] = -(d6 * math.sin(q[0])*math.sin(q[4]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.cos(q[4])) 
+        jacobian[0,5] = 0
+
+        jacobian[1,0] = (d4 * math.sin(q[0]))  - (-a2 * math.cos(q[0])*math.cos(q[1])) + (d6 * math.cos(q[4])*math.sin(q[0]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))  + (d5 * math.cos(q[1] + q[2])*math.cos(q[0])*math.sin(q[3]))  + (d5 * math.sin(q[1] + q[2])*math.cos(q[0])*math.cos(q[3]))  - (-a3 * math.cos(q[0])*math.cos(q[1])*math.cos(q[2]))  + (-a3 * math.cos(q[0])*math.sin(q[1])*math.sin(q[2])) 
+
+        jacobian[1,1] = (math.sin(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + -a2 * math.sin(q[1]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4]))) 
+
+        jacobian[1,2] = (math.sin(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4])))
+
+        jacobian[1,3] = (math.sin(q[0])*(d6 * math.sin(q[1] + q[2] + q[3])*math.sin(q[4]) + d5 * math.cos(q[1] + q[2])*math.cos(q[3]) - d5 * math.sin(q[1] + q[2])*math.sin(q[3])))
+
+        jacobian[1,4] = (d6 * math.cos(q[0])*math.sin(q[4]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[4])*math.sin(q[0]))
+        jacobian[1,5] = 0
+
+        jacobian[2,0] = 0
+        jacobian[2,1] = (d5 * math.cos(q[1] + q[2])*math.sin(q[3]))  - (-a2 * math.cos(q[1]))  - math.sin(q[4])*((d6 * math.cos(q[1] + q[2])*math.cos(q[3]))  - (d6 * math.sin(q[1] + q[2])*math.sin(q[3])) ) - (-a3 * math.cos(q[1] + q[2]))  + (d5 * math.sin(q[1] + q[2])*math.cos(q[3])) 
+
+        jacobian[2,2] = (d5 * math.sin(q[1] + q[2] + q[3]))  - (-a3 * math.cos(q[1] + q[2]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[4])) 
+        jacobian[2,3] = (d5 * math.sin(q[1] + q[2] + q[3]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[4]))
+        jacobian[2,4] = -(d6 * math.sin(q[1] + q[2] + q[3])*math.cos(q[4]))
+        jacobian[2,5] = 0
+
+        jacobian[3,0] = math.exp(q[5] / 3.1415926)*(math.cos(q[0])*math.cos(q[4]) + math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4]))
+        jacobian[3,1] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.cos(q[0])*math.sin(q[4])
+        jacobian[3,2] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.cos(q[0])*math.sin(q[4])
+        jacobian[3,3] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.cos(q[0])*math.sin(q[4])
+        jacobian[3,4] = -math.exp(q[5] / pi)*(math.sin(q[0])*math.sin(q[4]) + math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.cos(q[4]))
+        jacobian[3,5] = (math.exp(q[5] / pi)*(math.cos(q[4])*math.sin(q[0]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))) / pi
+
+        jacobian[4,0] = math.exp(q[5] / pi)*(math.cos(q[4])*math.sin(q[0]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))
+        jacobian[4,1] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.sin(q[0])*math.sin(q[4])
+        jacobian[4,2] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.sin(q[0])*math.sin(q[4])
+        jacobian[4,3] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[0])*math.sin(q[4])
+        jacobian[4,4] = math.exp(q[5] / pi)*(math.cos(q[0])*math.sin(q[4]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[4])*math.sin(q[0]))
+        jacobian[4,5] = -(math.exp(q[5] / pi)*(math.cos(q[0])*math.cos(q[4]) + math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4]))) / pi
+
+        jacobian[5,0] = 0
+        jacobian[5,1] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
+        jacobian[5,2] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
+        jacobian[5,3] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
+        jacobian[5,4] = -math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.cos(q[4])
+        jacobian[5,5] = -(math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])) / pi
+        
+        return jacobian
 
 if __name__ == "__main__":
     model_path = 'modelcheckpoints/realestate/zbufferpts.pth'

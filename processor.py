@@ -1,5 +1,4 @@
-from synsin import SynSinModel
-from yolodetector import YoloDetector
+from utilCodes import SynSinModel, YoloDetector
 import socket
 import struct
 import pickle
@@ -41,11 +40,11 @@ def run_server():
 
         res_frame = yolo_model.get_bounding_box(frame)
         if res_frame['confidence'] > 0.1:
-            cv2.rectangle(frame, (int(res_frame['xmin']), int(res_frame['ymin'])), (int(res_frame['xmax']), int(res_frame['ymax'])), (255,0,255), 3)
+            cv2.rectangle(frame, (int(res_frame['xmin']), int(res_frame['ymin'])), (int(res_frame['xmax']), int(res_frame['ymax'])), (255,0,255), 2)
         
         res_pred_frame = yolo_model.get_bounding_box(pred_frame)
         if res_pred_frame['confidence'] > 0.1:
-            cv2.rectangle(pred_frame, (int(res_pred_frame['xmin']), int(res_pred_frame['ymin'])), (int(res_pred_frame['xmax']), int(res_pred_frame['ymax'])), (255,0,255), 3)
+            cv2.rectangle(pred_frame, (int(res_pred_frame['xmin']), int(res_pred_frame['ymin'])), (int(res_pred_frame['xmax']), int(res_pred_frame['ymax'])), (255,0,255), 2)
 
         cv2.imshow('received frame', frame)
         cv2.imshow('predicted frame', pred_frame)
