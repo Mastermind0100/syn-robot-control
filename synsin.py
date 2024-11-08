@@ -2,6 +2,7 @@ import quaternion
 import numpy as np
 import os
 import cv2
+import json 
 
 os.environ['DEBUG'] = ''
 
@@ -9,8 +10,8 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 
-from models.networks.sync_batchnorm import convert_model
-from models.base_model import BaseModel
+from Models.networks.sync_batchnorm import convert_model
+from Models.base_model import BaseModel
 
 from options.options import get_model
 
@@ -87,7 +88,7 @@ class SynSinModel:
         current_depth, self.averages = self.compute_depth(temp, pred_frame, self.averages.copy())
         print(f"Average Depth: {sum(self.averages)/len(self.averages)}, Current Depth: {current_depth}")
 
-        return frame, pred_frame
+        return pred_frame
     
     def run_pred_video(self, cap:cv2.VideoCapture, save_output:bool=False):
         if save_output:
@@ -142,7 +143,7 @@ class SynSinModel:
 
 
     def compute_depth(self, frame1, frame2, averages):
-        focal_length = 26
+        focal_length = 426
         baseline = 0.12
         img1 = frame1
         img2 = frame2

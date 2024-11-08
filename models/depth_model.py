@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.projection import depth_manipulator
+from Models.projection import depth_manipulator
 
 EPS = 1e-4
 

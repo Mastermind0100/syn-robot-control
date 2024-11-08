@@ -1,10 +1,12 @@
 from synsin import SynSinModel
+from yolodetector import YoloDetector
 import socket
 import struct
 import pickle
 import cv2
 
 def run_server():
+    yolo_model = YoloDetector()
     model_path = 'modelcheckpoints/realestate/zbufferpts.pth'
     synsin = SynSinModel(model_path)
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -35,7 +37,15 @@ def run_server():
 
         # Deserialize frame
         frame = pickle.loads(frame_data)
-        og_frame, pred_frame = synsin.get_pred_frame(frame)
+        pred_frame = synsin.get_pred_frame(frame)
+
+        res_frame = yolo_model.get_bounding_box(frame)
+        if res_frame['confidence'] > 0.1:
+            cv2.rectangle(frame, (int(res_frame['xmin']), int(res_frame['ymin'])), (int(res_frame['xmax']), int(res_frame['ymax'])), (255,0,255), 3)
+        
+        res_pred_frame = yolo_model.get_bounding_box(pred_frame)
+        if res_pred_frame['confidence'] > 0.1:
+            cv2.rectangle(pred_frame, (int(res_pred_frame['xmin']), int(res_pred_frame['ymin'])), (int(res_pred_frame['xmax']), int(res_pred_frame['ymax'])), (255,0,255), 3)
 
         cv2.imshow('received frame', frame)
         cv2.imshow('predicted frame', pred_frame)

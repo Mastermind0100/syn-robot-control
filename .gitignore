@@ -3,5 +3,4 @@ modelcheckpoints/mp3d
 modelcheckpoints/realestate
 samples
 runs
-yolov6m.pt
-yolox_nano.pth
+yolov5s.pt

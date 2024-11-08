@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torchvision
 
-from models.layers.blocks import ResNet_Block
-from models.layers.normalization import BatchNorm_StandingStats
-from models.networks.configs import get_resnet_arch
+from Models.layers.blocks import ResNet_Block
+from Models.layers.normalization import BatchNorm_StandingStats
+from Models.networks.configs import get_resnet_arch
 
 
 def get_conv_layer(opt, use_3D=False):

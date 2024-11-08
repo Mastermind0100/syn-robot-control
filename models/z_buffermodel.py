@@ -3,10 +3,10 @@
 import torch
 import torch.nn as nn
 
-from models.losses.synthesis import SynthesisLoss
-from models.networks.architectures import Unet
-from models.networks.utilities import get_decoder, get_encoder
-from models.projection.z_buffer_manipulator import PtsManipulator
+from Models.losses.synthesis import SynthesisLoss
+from Models.networks.architectures import Unet
+from Models.networks.utilities import get_decoder, get_encoder
+from Models.projection.z_buffer_manipulator import PtsManipulator
 
 
 class ZbufferModelPts(nn.Module):

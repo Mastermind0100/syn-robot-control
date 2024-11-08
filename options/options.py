@@ -3,15 +3,15 @@
 def get_model(opt):
     print("Loading model %s ... ")
     if opt.model_type == "zbuffer_pts":
-        from models.z_buffermodel import ZbufferModelPts
+        from Models.z_buffermodel import ZbufferModelPts
 
         model = ZbufferModelPts(opt)
     elif opt.model_type == "viewappearance":
-        from models.encoderdecoder import ViewAppearanceFlow
+        from Models.encoderdecoder import ViewAppearanceFlow
 
         model = ViewAppearanceFlow(opt)
     elif opt.model_type == "tatarchenko":
-        from models.encoderdecoder import Tatarchenko
+        from Models.encoderdecoder import Tatarchenko
 
         model = Tatarchenko(opt)
         

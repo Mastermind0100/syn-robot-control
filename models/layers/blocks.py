@@ -1,7 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
 
 import torch.nn as nn
-from models.layers.normalization import LinearNoiseLayer
+from Models.layers.normalization import LinearNoiseLayer
 
 
 def spectral_conv_function(in_c, out_c, k, p, s):

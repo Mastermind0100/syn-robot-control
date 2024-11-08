@@ -2,7 +2,7 @@
 
 import torch.nn as nn
 
-from models.networks.architectures import (
+from Models.networks.architectures import (
     ResNetDecoder,
     ResNetEncoder,
     UNetDecoder64,

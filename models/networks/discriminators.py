@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import init
 
-from models.layers.normalization import get_D_norm_layer
+from Models.layers.normalization import get_D_norm_layer
 
 
 class BaseNetwork(nn.Module):

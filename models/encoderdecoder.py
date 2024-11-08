@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.losses.synthesis import SynthesisLoss
+from Models.losses.synthesis import SynthesisLoss
 
 
 class CollapseLayer(nn.Module):

@@ -3,8 +3,8 @@
 import torch
 import torch.nn as nn
 
-from models.losses.ssim import ssim
-from models.networks.architectures import VGG19
+from Models.losses.ssim import ssim
+from Models.networks.architectures import VGG19
 
 
 class SynthesisLoss(nn.Module):

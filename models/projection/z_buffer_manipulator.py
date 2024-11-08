@@ -7,12 +7,11 @@ from pytorch3d.structures import Pointclouds
 
 EPS = 1e-2
 
-
 def get_splatter(
     name, depth_values, opt=None, size=256, C=64, points_per_pixel=8
 ):
     if name == "xyblending":
-        from models.layers.z_buffer_layers import RasterizePointsXYsBlending
+        from Models.layers.z_buffer_layers import RasterizePointsXYsBlending
 
         return RasterizePointsXYsBlending(
             C,

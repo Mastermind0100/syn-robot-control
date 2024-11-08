@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn import init
 
-from models.losses.gan_loss import DiscriminatorLoss
+from Models.losses.gan_loss import DiscriminatorLoss
 
 class BaseModel(nn.Module):
     def __init__(self, model, opt):
