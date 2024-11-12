@@ -22,7 +22,9 @@ import time
 torch.backends.cudnn.enabled = True
 
 class SynSinModel:
-    def __init__(self, model_path:str) -> None:
+    def __init__(self, model_path:str, focal_length:int) -> None:
+        self.focal_length = focal_length
+        self.baseline = 0.15
         self.averages = []
         opts = torch.load(model_path)['opts']
         opts.render_ids = [1]
@@ -47,14 +49,13 @@ class SynSinModel:
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         
-        theta = -0.1
-        phi = 0.1
-
+        # theta = -0.1
+        # phi = 0.1
         tx = 0
-        ty = -0.25
+        ty = -0.15
         tz = 0
 
-        angle_degrees = 20
+        angle_degrees = 10
         angle_radians = np.deg2rad(angle_degrees)
         rotation_matrix = np.array([
             [np.cos(angle_radians), 0, np.sin(angle_radians)],
@@ -142,11 +143,8 @@ class SynSinModel:
             res_cap.release()
         cv2.destroyAllWindows()
 
-
     def compute_depth(self, frame1, frame2, averages):
         average_depth = 0
-        focal_length = 426
-        baseline = 0.12
         img1 = frame1
         img2 = frame2
         gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
@@ -154,14 +152,14 @@ class SynSinModel:
         stereo = cv2.StereoBM_create(numDisparities=32, blockSize=15)
         disparity = stereo.compute(gray1, gray2)
         # disp_norm = cv2.normalize(disparity, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-        depth_data = (focal_length * baseline) / (disparity + 0.0001)
+        depth_data = (self.focal_length * self.baseline) / (disparity + 0.0001)
 
         total_depth = 0
         count = 0
         # print("Depth:", depth_data)
         for depthrow in depth_data:
             max_depth_in_row = max(depthrow)
-            if max_depth_in_row > 0 and max_depth_in_row < baseline*5:
+            if max_depth_in_row > 0 and max_depth_in_row < self.baseline*5:
                 total_depth += max_depth_in_row
                 count += 1
 
@@ -198,6 +196,9 @@ class SynSinModel:
 
         return res
 
+    def get_focal_length(self) -> int:
+        return self.focal_length
+
 class YoloDetector:
     def __init__(self) -> None:
         self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
@@ -210,72 +211,98 @@ class YoloDetector:
 
 class RobotController:
     def __init__(self) -> None:
-        pass
+        self.L = np.zeros([2, 6])
+        self.error_matrix = np.zeros([1,2])
+        self.jacobian = np.zeros([6,6])
 
-    def calculate_jacobian(q):
+    def calculate_error_matrix(self, u_delta, v_delta):
+        self.error_matrix = np.array([u_delta, v_delta])     
+
+    def calcualte_image_jacobian(self, f, Z, u, v):
+        self.L[0][0] = -f/Z
+        self.L[0][2] = u
+        self.L[0][3] = u*v
+        self.L[0][4] = -(f+(u**2))
+        self.L[0][5] = v
+        self.L[1][1] = -f/Z
+        self.L[1][2] = v
+        self.L[1][3] = f+(v**2)
+        self.L[1][4] = -u*v
+        self.L[1][5] = -u
+
+    def calculate_jacobian(self, q):
         pi = 3.1415926
-        jacobian =  np.zeros([6,6])
         d4=0.1333
         d5=0.0997
         d6=0.0996
         a2=-0.425
         a3=-0.3922
         
-        jacobian[0,0] = (d4 * math.cos(q[0]))  + d6 * math.cos(q[0])*math.cos(q[4])  + (-a2) * math.cos(q[1])*math.sin(q[0]) - (-a3 * math.sin(q[0])*math.sin(q[1])*math.sin(q[2])) + (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4])) - (d5 * math.cos(q[1] + q[2])*math.sin(q[0])*math.sin(q[3]))  - (d5 * math.sin(q[1] + q[2])*math.cos(q[3])*math.sin(q[0])) + (-a3 * math.cos(q[1])*math.cos(q[2])*math.sin(q[0])) 
+        self.jacobian[0][0] = (d4 * math.cos(q[0]))  + d6 * math.cos(q[0])*math.cos(q[4])  + (-a2) * math.cos(q[1])*math.sin(q[0]) - (-a3 * math.sin(q[0])*math.sin(q[1])*math.sin(q[2])) + (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4])) - (d5 * math.cos(q[1] + q[2])*math.sin(q[0])*math.sin(q[3]))  - (d5 * math.sin(q[1] + q[2])*math.cos(q[3])*math.sin(q[0])) + (-a3 * math.cos(q[1])*math.cos(q[2])*math.sin(q[0])) 
 
-        jacobian[0,1] = (math.cos(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + -a2 * math.sin(q[1]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4]))) 
-        jacobian[0,2] = (math.cos(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4])))
+        self.jacobian[0][1] = (math.cos(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + -a2 * math.sin(q[1]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4]))) 
+        self.jacobian[0][2] = (math.cos(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4])))
 
-        jacobian[0,3] = (math.cos(q[0])*(d6 * math.sin(q[1] + q[2] + q[3])*math.sin(q[4]) + d5 * math.cos(q[1] + q[2])*math.cos(q[3]) - d5 * math.sin(q[1] + q[2])*math.sin(q[3]))) 
+        self.jacobian[0][3] = (math.cos(q[0])*(d6 * math.sin(q[1] + q[2] + q[3])*math.sin(q[4]) + d5 * math.cos(q[1] + q[2])*math.cos(q[3]) - d5 * math.sin(q[1] + q[2])*math.sin(q[3]))) 
 
-        jacobian[0,4] = -(d6 * math.sin(q[0])*math.sin(q[4]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.cos(q[4])) 
-        jacobian[0,5] = 0
+        self.jacobian[0][4] = -(d6 * math.sin(q[0])*math.sin(q[4]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.cos(q[4])) 
+        self.jacobian[0][5] = 0
 
-        jacobian[1,0] = (d4 * math.sin(q[0]))  - (-a2 * math.cos(q[0])*math.cos(q[1])) + (d6 * math.cos(q[4])*math.sin(q[0]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))  + (d5 * math.cos(q[1] + q[2])*math.cos(q[0])*math.sin(q[3]))  + (d5 * math.sin(q[1] + q[2])*math.cos(q[0])*math.cos(q[3]))  - (-a3 * math.cos(q[0])*math.cos(q[1])*math.cos(q[2]))  + (-a3 * math.cos(q[0])*math.sin(q[1])*math.sin(q[2])) 
+        self.jacobian[1][0] = (d4 * math.sin(q[0]))  - (-a2 * math.cos(q[0])*math.cos(q[1])) + (d6 * math.cos(q[4])*math.sin(q[0]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))  + (d5 * math.cos(q[1] + q[2])*math.cos(q[0])*math.sin(q[3]))  + (d5 * math.sin(q[1] + q[2])*math.cos(q[0])*math.cos(q[3]))  - (-a3 * math.cos(q[0])*math.cos(q[1])*math.cos(q[2]))  + (-a3 * math.cos(q[0])*math.sin(q[1])*math.sin(q[2])) 
 
-        jacobian[1,1] = (math.sin(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + -a2 * math.sin(q[1]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4]))) 
+        self.jacobian[1][1] = (math.sin(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + -a2 * math.sin(q[1]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4]))) 
 
-        jacobian[1,2] = (math.sin(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4])))
+        self.jacobian[1][2] = (math.sin(q[0])*(d5 * math.cos(q[1] + q[2] + q[3]) - d6/2 * math.cos(q[1] + q[2] + q[3] + q[4]) + -a3 * math.sin(q[1] + q[2]) + d6/2 * math.cos(q[1] + q[2] + q[3] - q[4])))
 
-        jacobian[1,3] = (math.sin(q[0])*(d6 * math.sin(q[1] + q[2] + q[3])*math.sin(q[4]) + d5 * math.cos(q[1] + q[2])*math.cos(q[3]) - d5 * math.sin(q[1] + q[2])*math.sin(q[3])))
+        self.jacobian[1][3] = (math.sin(q[0])*(d6 * math.sin(q[1] + q[2] + q[3])*math.sin(q[4]) + d5 * math.cos(q[1] + q[2])*math.cos(q[3]) - d5 * math.sin(q[1] + q[2])*math.sin(q[3])))
 
-        jacobian[1,4] = (d6 * math.cos(q[0])*math.sin(q[4]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[4])*math.sin(q[0]))
-        jacobian[1,5] = 0
+        self.jacobian[1][4] = (d6 * math.cos(q[0])*math.sin(q[4]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.cos(q[4])*math.sin(q[0]))
+        self.jacobian[1][5] = 0
 
-        jacobian[2,0] = 0
-        jacobian[2,1] = (d5 * math.cos(q[1] + q[2])*math.sin(q[3]))  - (-a2 * math.cos(q[1]))  - math.sin(q[4])*((d6 * math.cos(q[1] + q[2])*math.cos(q[3]))  - (d6 * math.sin(q[1] + q[2])*math.sin(q[3])) ) - (-a3 * math.cos(q[1] + q[2]))  + (d5 * math.sin(q[1] + q[2])*math.cos(q[3])) 
+        self.jacobian[2][0] = 0
+        self.jacobian[2][1] = (d5 * math.cos(q[1] + q[2])*math.sin(q[3]))  - (-a2 * math.cos(q[1]))  - math.sin(q[4])*((d6 * math.cos(q[1] + q[2])*math.cos(q[3]))  - (d6 * math.sin(q[1] + q[2])*math.sin(q[3])) ) - (-a3 * math.cos(q[1] + q[2]))  + (d5 * math.sin(q[1] + q[2])*math.cos(q[3])) 
 
-        jacobian[2,2] = (d5 * math.sin(q[1] + q[2] + q[3]))  - (-a3 * math.cos(q[1] + q[2]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[4])) 
-        jacobian[2,3] = (d5 * math.sin(q[1] + q[2] + q[3]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[4]))
-        jacobian[2,4] = -(d6 * math.sin(q[1] + q[2] + q[3])*math.cos(q[4]))
-        jacobian[2,5] = 0
+        self.jacobian[2][2] = (d5 * math.sin(q[1] + q[2] + q[3]))  - (-a3 * math.cos(q[1] + q[2]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[4])) 
+        self.jacobian[2][3] = (d5 * math.sin(q[1] + q[2] + q[3]))  - (d6 * math.cos(q[1] + q[2] + q[3])*math.sin(q[4]))
+        self.jacobian[2][4] = -(d6 * math.sin(q[1] + q[2] + q[3])*math.cos(q[4]))
+        self.jacobian[2][5] = 0
 
-        jacobian[3,0] = math.exp(q[5] / 3.1415926)*(math.cos(q[0])*math.cos(q[4]) + math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4]))
-        jacobian[3,1] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.cos(q[0])*math.sin(q[4])
-        jacobian[3,2] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.cos(q[0])*math.sin(q[4])
-        jacobian[3,3] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.cos(q[0])*math.sin(q[4])
-        jacobian[3,4] = -math.exp(q[5] / pi)*(math.sin(q[0])*math.sin(q[4]) + math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.cos(q[4]))
-        jacobian[3,5] = (math.exp(q[5] / pi)*(math.cos(q[4])*math.sin(q[0]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))) / pi
+        self.jacobian[3][0] = math.exp(q[5] / 3.1415926)*(math.cos(q[0])*math.cos(q[4]) + math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4]))
+        self.jacobian[3][1] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.cos(q[0])*math.sin(q[4])
+        self.jacobian[3][2] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.cos(q[0])*math.sin(q[4])
+        self.jacobian[3][3] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.cos(q[0])*math.sin(q[4])
+        self.jacobian[3][4] = -math.exp(q[5] / pi)*(math.sin(q[0])*math.sin(q[4]) + math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.cos(q[4]))
+        self.jacobian[3][5] = (math.exp(q[5] / pi)*(math.cos(q[4])*math.sin(q[0]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))) / pi
 
-        jacobian[4,0] = math.exp(q[5] / pi)*(math.cos(q[4])*math.sin(q[0]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))
-        jacobian[4,1] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.sin(q[0])*math.sin(q[4])
-        jacobian[4,2] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.sin(q[0])*math.sin(q[4])
-        jacobian[4,3] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[0])*math.sin(q[4])
-        jacobian[4,4] = math.exp(q[5] / pi)*(math.cos(q[0])*math.sin(q[4]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[4])*math.sin(q[0]))
-        jacobian[4,5] = -(math.exp(q[5] / pi)*(math.cos(q[0])*math.cos(q[4]) + math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4]))) / pi
+        self.jacobian[4][0] = math.exp(q[5] / pi)*(math.cos(q[4])*math.sin(q[0]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[0])*math.sin(q[4]))
+        self.jacobian[4][1] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.sin(q[0])*math.sin(q[4])
+        self.jacobian[4][2] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / 3.1415926)*math.sin(q[0])*math.sin(q[4])
+        self.jacobian[4][3] = math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[0])*math.sin(q[4])
+        self.jacobian[4][4] = math.exp(q[5] / pi)*(math.cos(q[0])*math.sin(q[4]) - math.cos(q[1] + q[2] + q[3])*math.cos(q[4])*math.sin(q[0]))
+        self.jacobian[4][5] = -(math.exp(q[5] / pi)*(math.cos(q[0])*math.cos(q[4]) + math.cos(q[1] + q[2] + q[3])*math.sin(q[0])*math.sin(q[4]))) / pi
 
-        jacobian[5,0] = 0
-        jacobian[5,1] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
-        jacobian[5,2] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
-        jacobian[5,3] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
-        jacobian[5,4] = -math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.cos(q[4])
-        jacobian[5,5] = -(math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])) / pi
-        
-        return jacobian
+        self.jacobian[5][0] = 0
+        self.jacobian[5][1] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
+        self.jacobian[5][2] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
+        self.jacobian[5][3] = -math.cos(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])
+        self.jacobian[5][4] = -math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.cos(q[4])
+        self.jacobian[5][5] = -(math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])) / pi
+
+    def get_r_matrix(self):
+        J_inv = np.linalg.inv(self.jacobian)
+        L_ps_inv = np.linalg.pinv(self.L)
+        e = self.error_matrix
+        r = np.dot(J_inv, np.dot(L_ps_inv, e))
+        return r
 
 if __name__ == "__main__":
-    model_path = 'modelcheckpoints/realestate/zbufferpts.pth'
-    cap = cv2.VideoCapture('samples/tape2.mp4')
-    synsin = SynSinModel(model_path)
-    synsin.run_pred_video(cap, False)
-    cap.release()
+    controller = RobotController()
+    u = 10
+    v = 360
+    u_delta = abs(u-300)
+    v_delta = abs(v-360)
+    controller.calculate_error_matrix(u_delta, v_delta)
+    controller.calculate_jacobian([-0.12, -0.43, 0.14, 0, 3.11, 0.04])
+    controller.calcualte_image_jacobian(26, 0.15, u, v)
+    end_effector_velocities = controller.get_r_matrix()
+    print(end_effector_velocities)

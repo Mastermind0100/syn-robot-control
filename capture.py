@@ -60,5 +60,5 @@ def capture_stream(camera_type:str, filepath:str=None):
 
 if __name__ == "__main__":
     camera_type = 'cv'
-    # filename = 'samples/tape2.mp4'
-    capture_stream(camera_type)
+    filename = 'samples/pot.mp4'
+    capture_stream(camera_type, filename)
