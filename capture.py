@@ -15,7 +15,6 @@ def socket_handler(frame):
     client_socket.sendall(message)
 
 def capture_stream(camera_type:str, filepath:str=None):
-
     if camera_type == 'rs':
         import pyrealsense2 as rs
         pipeline = rs.pipeline()
@@ -61,4 +60,7 @@ def capture_stream(camera_type:str, filepath:str=None):
 if __name__ == "__main__":
     camera_type = 'cv'
     filename = 'samples/pot.mp4'
+
+    print("Reading Video Capture...")
     capture_stream(camera_type, filename)
+    print("Done!")

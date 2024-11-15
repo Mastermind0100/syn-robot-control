@@ -4,6 +4,8 @@ import os
 import cv2
 import json 
 import math
+import rtde.rtde as rtde
+import rtde.rtde_config as rtde_config
 
 os.environ['DEBUG'] = ''
 
@@ -26,6 +28,7 @@ class SynSinModel:
         self.focal_length = focal_length
         self.baseline = 0.15
         self.averages = []
+        self.average_depth = 0
         opts = torch.load(model_path)['opts']
         opts.render_ids = [1]
         model = get_model(opts)
@@ -169,6 +172,7 @@ class SynSinModel:
         except:
             average_depth = sum(averages)/len(averages)
         finally:
+            self.average_depth = average_depth
             return average_depth, averages
 
     def get_bounded_frame(self, frame: np.ndarray) -> np.ndarray:
@@ -210,27 +214,79 @@ class YoloDetector:
         return data
 
 class RobotController:
-    def __init__(self) -> None:
+    def __init__(self, coords:list, f:int) -> None:
+        self.u = coords[0]
+        self.v = coords[1]
+        self.f = f
+        self.Z = 0
         self.L = np.zeros([2, 6])
         self.error_matrix = np.zeros([1,2])
         self.jacobian = np.zeros([6,6])
+        self.DH_PARAMS = [{"theta": 0, "a": 0, "d": 0.1625, "alpha": np.pi / 2},
+                          {"theta": 0, "a": -0.425, "d": 0, "alpha": 0},
+                          {"theta": 0, "a": -0.3922, "d": 0, "alpha": 0},
+                          {"theta": 0, "a": 0, "d": 0.1333, "alpha": np.pi / 2},
+                          {"theta": 0, "a": 0, "d": 0.0997, "alpha": -np.pi / 2},
+                          {"theta": 0, "a": 0, "d": 0.0996, "alpha": 0}]
 
-    def calculate_error_matrix(self, u_delta, v_delta):
+    def transformation_matrix(self, theta, a, d, alpha):    
+        """Compute the individual transformation matrix using DH parameters."""    
+        ct, st = np.cos(theta), np.sin(theta)    
+        ca, sa = np.cos(alpha), np.sin(alpha)    
+        return np.array([[ct, -st * ca, st * sa, a * ct],
+                        [st, ct * ca, -ct * sa, a * st],
+                        [0, sa, ca, d],
+                        [0, 0, 0, 1]])
+    
+    def calculate_jacobian(self, q):
+        """    Compute the Jacobian matrix for UR5e given joint angles q.    :param q: List or array of joint angles [q1, q2, q3, q4, q5, q6]    :return: 6x6 Jacobian matrix    """    
+        # Initialize transformation matrices    
+        T = np.eye(4)    
+        transforms = []    
+        # Compute the transformation matrix from base to each joint    
+        for i in range(6):        
+            theta = q[i] + self.DH_PARAMS[i]["theta"]  
+            # Add joint angle to theta        
+            a = self.DH_PARAMS[i]["a"]        
+            d = self.DH_PARAMS[i]["d"]        
+            alpha = self.DH_PARAMS[i]["alpha"]        
+            T_i = self.transformation_matrix(theta, a, d, alpha)        
+            T = T @ T_i  
+            # Cumulative transformation from base to joint i        
+            transforms.append(T)    
+        # End effector position    
+        o_n = T[:3, 3]    
+        # Initialize Jacobian matrix    
+        J = np.zeros((6, 6))    
+        for i in range(6):        
+            o_i = transforms[i][:3, 3]        
+            z_i = transforms[i][:3, 2]        
+            # Linear velocity part        
+            J[:3, i] = np.cross(z_i, o_n - o_i)        
+            # Angular velocity part        
+            J[3:, i] = z_i       
+        
+        self.jacobian = J
+
+    def calculate_error_matrix(self, u_detected, v_detected):
+        u_delta = abs(self.u - u_detected)
+        v_delta = abs(self.v - v_detected)
         self.error_matrix = np.array([u_delta, v_delta])     
 
-    def calcualte_image_jacobian(self, f, Z, u, v):
-        self.L[0][0] = -f/Z
-        self.L[0][2] = u
-        self.L[0][3] = u*v
-        self.L[0][4] = -(f+(u**2))
-        self.L[0][5] = v
-        self.L[1][1] = -f/Z
-        self.L[1][2] = v
-        self.L[1][3] = f+(v**2)
-        self.L[1][4] = -u*v
-        self.L[1][5] = -u
+    def calcualte_image_jacobian(self, Z):
+        self.Z = Z
+        self.L[0][0] = -self.f/Z
+        self.L[0][2] = self.u/Z
+        self.L[0][3] = self.u*self.v/self.f
+        self.L[0][4] = -(self.f+(self.u**2))/self.f
+        self.L[0][5] = self.v
+        self.L[1][1] = -self.f/Z
+        self.L[1][2] = self.v/Z
+        self.L[1][3] = self.f+(self.v**2)/self.f
+        self.L[1][4] = -self.u*self.v/self.f
+        self.L[1][5] = -self.u
 
-    def calculate_jacobian(self, q):
+    def old_calculate_jacobian(self, q):
         pi = 3.1415926
         d4=0.1333
         d5=0.0997
@@ -288,21 +344,110 @@ class RobotController:
         self.jacobian[5][4] = -math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.cos(q[4])
         self.jacobian[5][5] = -(math.sin(q[1] + q[2] + q[3])*math.exp(q[5] / pi)*math.sin(q[4])) / pi
 
-    def get_r_matrix(self):
-        J_inv = np.linalg.inv(self.jacobian)
-        L_ps_inv = np.linalg.pinv(self.L)
-        e = self.error_matrix
-        r = np.dot(J_inv, np.dot(L_ps_inv, e))
-        return r
+    def get_r_dot_matrix(self, lam):
+        # J_inv = np.linalg.inv(self.jacobian)
+        # print(J_inv)
+        # L_ps_inv = np.linalg.pinv(self.L)
+        L_transpose = np.transpose(self.L)
+        J_transpose = np.transpose(self.jacobian)
+        r_dot = np.dot((-lam*L_transpose),((self.Z/self.f)*self.error_matrix))
+        r_dot = r_dot.round(4)
+        q_dot = np.dot(J_transpose,r_dot)
+        q_dot = q_dot.round(4)
+        return q_dot, r_dot
+
+class RTDEHandler:
+    def __init__(self, host:str, port:int, record_config_file:str, control_config_file:str) -> None:
+        self.host = host
+        self.port = port
+
+        # record configurations
+        self.rec_conf = rtde_config.ConfigFile(record_config_file)
+        self.output_names, self.output_types = self.rec_conf.get_recipe("out")
+
+        # control configurations
+        self.control_conf = rtde_config.ConfigFile(control_config_file)
+        self.state_names, self.state_types = self.control_conf.get_recipe("state")
+        setp_names, setp_types = self.control_conf.get_recipe("setp")
+        watchdog_names, watchdog_types = self.control_conf.get_recipe("watchdog")
+
+        self.con = rtde.RTDE(host, port)
+        self.con.connect()
+
+        self.con.get_controller_version()
+
+        self.setp = self.con.send_input_setup(setp_names, setp_types)
+        self.setp.input_double_register_0 = 0
+        self.setp.input_double_register_1 = 0
+        self.setp.input_double_register_2 = 0
+        self.setp.input_double_register_3 = 0
+        self.setp.input_double_register_4 = 0
+        self.setp.input_double_register_5 = 0
+        self.watchdog = self.con.send_input_setup(watchdog_names, watchdog_types)
+        self.watchdog.input_int_register_0 = 0
+
+    def list_to_setp(self, sp, list):
+        for i in range(0, 6):
+            sp.__dict__["input_double_register_%i" % i] = list[i]
+        return sp
+    
+    def get_data(self) -> dict:
+        if not self.con.send_output_setup(self.output_names, self.output_types):
+            print("Unable to configure record output")
+        if not self.con.send_start():
+            print("Unable to start synchronization")
+        try:
+            state = self.con.receive().__dict__
+            state["status"] = 200
+            return state
+
+        except rtde.RTDEException:
+            print("Session error!")
+            self.con.disconnect()
+            return {"status": 500}
+        
+    def send_control_position(self, new_setp) -> dict:
+        if not self.con.send_output_setup(self.state_names, self.state_types):
+            print("Unable to configure control config")
+        if not self.con.send_start():
+            print("Unable to start synchronization")
+        res = {
+            "status": 100 # initial condition
+        }
+        try:
+            self.list_to_setp(self.setp, new_setp)
+            self.con.send(self.setp)
+            self.watchdog.input_int_register_0 = 1
+            res["status"] = 200 # Success
+
+        except rtde.RTDEException:
+            res["status"] = 400 # Failure
+
+        finally:
+            return res
 
 if __name__ == "__main__":
-    controller = RobotController()
-    u = 10
-    v = 360
-    u_delta = abs(u-300)
-    v_delta = abs(v-360)
-    controller.calculate_error_matrix(u_delta, v_delta)
-    controller.calculate_jacobian([-0.12, -0.43, 0.14, 0, 3.11, 0.04])
-    controller.calcualte_image_jacobian(26, 0.15, u, v)
-    end_effector_velocities = controller.get_r_matrix()
-    print(end_effector_velocities)
+    # from time import time
+    # start = time()
+    # q = [-0.12, -0.43, 0.14, 0, 3.11, 0.04]
+    # controller = RobotController(u=10, v=360, f=644)
+    # controller.calculate_error_matrix(300, 360) # pixels
+    # controller.calculate_jacobian(q)
+    # controller.calcualte_image_jacobian(0.15)
+    # q_dot, r_dot = controller.get_r_dot_matrix(0.3)
+    # end = time()
+
+    # print(f"Q_dot: {list(q_dot)}\nR_dot: {list(r_dot)}\nTime taken: {end-start}")
+    host = "localhost" # "10.149.230.20"
+    port = 30004
+    final_setp = [-0.12, -0.51, 0.21, 0, 3.11, 0.04]
+    record_config_file = "rdte_config_files/record_config.xml"
+    control_config_file = "rdte_config_files/control_config.xml"
+    handler = RTDEHandler(host, port, record_config_file, control_config_file)
+    import time
+    start = time.time()
+    print(handler.get_data())
+    res = handler.send_control_position(final_setp)
+    print(res)
+    end = time.time()
+    print("time diff: ", end-start)
