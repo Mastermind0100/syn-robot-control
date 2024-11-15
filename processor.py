@@ -8,12 +8,11 @@ def run_server():
     focal_length = 644
     host = "localhost" # "10.149.230.20"
     port = 30004
-    record_config_file = "rdte_config_files/record_config.xml"
-    control_config_file = "rdte_config_files/control_config.xml"
+    config_file = "rdte_config_files/main_config.xml"
     init_coordinates = [480//2, 640//2]
     controller = RobotController(init_coordinates,focal_length)
     yolo_model = YoloDetector()
-    rdte_handler = RTDEHandler(host, port, record_config_file, control_config_file)
+    rdte_handler = RTDEHandler(host, port, config_file)
     model_path = 'modelcheckpoints/realestate/zbufferpts.pth'
     synsin = SynSinModel(model_path, focal_length) # change focal length here as per needed
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

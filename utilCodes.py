@@ -357,19 +357,15 @@ class RobotController:
         return q_dot, r_dot
 
 class RTDEHandler:
-    def __init__(self, host:str, port:int, record_config_file:str, control_config_file:str) -> None:
+    def __init__(self, host:str, port:int, config_file:str) -> None:
         self.host = host
         self.port = port
 
-        # record configurations
-        self.rec_conf = rtde_config.ConfigFile(record_config_file)
-        self.output_names, self.output_types = self.rec_conf.get_recipe("out")
-
-        # control configurations
-        self.control_conf = rtde_config.ConfigFile(control_config_file)
-        self.state_names, self.state_types = self.control_conf.get_recipe("state")
-        setp_names, setp_types = self.control_conf.get_recipe("setp")
-        watchdog_names, watchdog_types = self.control_conf.get_recipe("watchdog")
+        # configurations
+        self.conf = rtde_config.ConfigFile(config_file)
+        state_names, state_types = self.conf.get_recipe("state")
+        setp_names, setp_types = self.conf.get_recipe("setp")
+        watchdog_names, watchdog_types = self.conf.get_recipe("watchdog")
 
         self.con = rtde.RTDE(host, port)
         self.con.connect()
@@ -386,16 +382,18 @@ class RTDEHandler:
         self.watchdog = self.con.send_input_setup(watchdog_names, watchdog_types)
         self.watchdog.input_int_register_0 = 0
 
+        if not self.con.send_output_setup(state_names, state_types):
+            print("Unable to configure states")
+
+        if not self.con.send_start():
+            print("Unable to start synchronization")
+
     def list_to_setp(self, sp, list):
         for i in range(0, 6):
             sp.__dict__["input_double_register_%i" % i] = list[i]
         return sp
     
     def get_data(self) -> dict:
-        if not self.con.send_output_setup(self.output_names, self.output_types):
-            print("Unable to configure record output")
-        if not self.con.send_start():
-            print("Unable to start synchronization")
         try:
             state = self.con.receive().__dict__
             state["status"] = 200
@@ -407,10 +405,6 @@ class RTDEHandler:
             return {"status": 500}
         
     def send_control_position(self, new_setp) -> dict:
-        if not self.con.send_output_setup(self.state_names, self.state_types):
-            print("Unable to configure control config")
-        if not self.con.send_start():
-            print("Unable to start synchronization")
         res = {
             "status": 100 # initial condition
         }
@@ -441,9 +435,8 @@ if __name__ == "__main__":
     host = "localhost" # "10.149.230.20"
     port = 30004
     final_setp = [-0.12, -0.51, 0.21, 0, 3.11, 0.04]
-    record_config_file = "rdte_config_files/record_config.xml"
-    control_config_file = "rdte_config_files/control_config.xml"
-    handler = RTDEHandler(host, port, record_config_file, control_config_file)
+    config_file = "rdte_config_files/main_config.xml"
+    handler = RTDEHandler(host, port, config_file)
     import time
     start = time.time()
     print(handler.get_data())
