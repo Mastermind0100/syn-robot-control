@@ -6,7 +6,8 @@ import cv2
 
 def run_server():
     focal_length = 644
-    host = "localhost" # "10.149.230.20"
+    host = "10.149.230.20"
+    # host = "localhost"
     port = 30004
     config_file = "rdte_config_files/main_config.xml"
     init_coordinates = [480//2, 640//2]
@@ -20,11 +21,13 @@ def run_server():
     server_socket.listen(2)
     conn, addr = server_socket.accept()
 
+    # print("The code is here!")
+
     data = b""
     payload_size = struct.calcsize("Q")
 
     temp_depth = 0.15
-
+    flag = False
     while True:
         while len(data) < payload_size:
             packet = conn.recv(4096)
@@ -42,18 +45,24 @@ def run_server():
         frame_data = data[:msg_size]
         data = data[msg_size:]
 
+        print("The code is here!")
+
         # Deserialize frame
         frame = pickle.loads(frame_data)
         pred_frame = synsin.get_pred_frame(frame)
         mid_point_bounding_box = []
 
          # need to change these for robot control as needed
-        print(f"frame shape{frame.shape}")
+        # print(f"frame shape{frame.shape}")
 
         '''
         IMPORTANT NOTE: WE HAVE TO CHECK THE COORDINATES WHETHER THEY ARE WITH RESPECT TO
         ORIGINAL FRAME SIZE OR THE RESIZED ONE AFTER THE SYNSIN MODEL TRANSFORMS IT
         '''
+        # if not flag:
+        #     accept_inp = input("Should we proceed? (Y/N): ")
+        #     if accept_inp == 'Y' or accept_inp == 'y':
+        #         flag = True                
 
         res_frame = yolo_model.get_bounding_box(frame)
         if res_frame['confidence'] > 0.1:
@@ -61,31 +70,39 @@ def run_server():
             mid_point_bounding_box.append((res_frame['ymin'] + res_frame['ymax'])//2)
             cv2.rectangle(frame, (int(res_frame['xmin']), int(res_frame['ymin'])), (int(res_frame['xmax']), int(res_frame['ymax'])), (255,0,255), 2)
         
-        print(mid_point_bounding_box)
+        # print(mid_point_bounding_box)
         if len(mid_point_bounding_box) == 0:
             continue
-
+        
+        actual_q = rdte_handler.get_data()["actual_q"]
+        print(f"Actual Q: {actual_q}")
         # controller.calcualte_image_jacobian(synsin.average_depth)
         controller.calcualte_image_jacobian(temp_depth)
-        controller.calculate_jacobian(rdte_handler.get_data()["actual_q"])
+        # controller.calculate_jacobian(actual_q)
+        controller.old_calculate_jacobian(actual_q)
         controller.calculate_error_matrix(mid_point_bounding_box[0], mid_point_bounding_box[1])
         q_dot, r_dot = controller.get_r_dot_matrix(lam=0.3)
 
         res = rdte_handler.send_control_position(q_dot)
-        if res["status"] != 200:
-            print(res)
+        print(res)
+        print(f"Q dot: {q_dot}")
+
+        if res["status"] != 200:    
             break
         else:
             temp_depth -= 0.015
+        
+        rdte_handler.con.send(rdte_handler.watchdog)
 
-        # cv2.imshow('received frame', frame)
-        # cv2.imshow('predicted frame', pred_frame)
+        cv2.imshow('received frame', frame)
+        cv2.imshow('predicted frame', pred_frame)
         if cv2.waitKey(1) == ord('q'):
             break
     
     cv2.destroyAllWindows()
     conn.close()
     server_socket.close()
+    rdte_handler.watchdog.input_int_register_0 = 1
 
 if __name__ == "__main__":
     run_server()

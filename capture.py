@@ -58,7 +58,7 @@ def capture_stream(camera_type:str, filepath:str=None):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    camera_type = 'cv'
+    camera_type = 'rs'
     filename = 'samples/pot.mp4'
 
     print("Reading Video Capture...")

@@ -91,7 +91,7 @@ class SynSinModel:
         pred_frame = cv2.cvtColor(pred_frame, cv2.COLOR_RGB2BGR)
 
         current_depth, self.averages = self.compute_depth(temp, pred_frame, self.averages.copy())
-        print(f"Average Depth: {sum(self.averages)/len(self.averages)}, Current Depth: {current_depth}")
+        # print(f"Average Depth: {sum(self.averages)/len(self.averages)}, Current Depth: {current_depth}")
 
         return pred_frame
     
@@ -128,7 +128,7 @@ class SynSinModel:
             frame_counter += 1
 
             current_depth, averages = self.compute_depth(temp, pred_frame, averages.copy())
-            print(f"Average Depth: {sum(averages)/len(averages)}, Current Depth: {current_depth}")
+            # print(f"Average Depth: {sum(averages)/len(averages)}, Current Depth: {current_depth}")
             cv2.imshow("original", temp)
             cv2.imshow("generated", pred_frame)
             
@@ -410,10 +410,10 @@ class RTDEHandler:
         }
         try:
             self.list_to_setp(self.setp, new_setp)
+            print(f"NEW SETP: {new_setp}")
             self.con.send(self.setp)
-            self.watchdog.input_int_register_0 = 1
+            # self.con.send(self.watchdog)
             res["status"] = 200 # Success
-
         except rtde.RTDEException:
             res["status"] = 400 # Failure
 
