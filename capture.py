@@ -35,8 +35,8 @@ def capture_stream(camera_type:str, filepath:str=None):
 
                 color_image = np.asanyarray(color_frame.get_data())
                 socket_handler(color_image)
-                cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
-                cv2.imshow('RealSense', color_image)
+                # cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
+                # cv2.imshow('RealSense', color_image)
                 if cv2.waitKey(1) == ord('q'):
                     break
 

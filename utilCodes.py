@@ -269,8 +269,8 @@ class RobotController:
         self.jacobian = J
 
     def calculate_error_matrix(self, u_detected, v_detected):
-        u_delta = abs(self.u - u_detected)
-        v_delta = abs(self.v - v_detected)
+        u_delta = u_detected - self.u
+        v_delta = v_detected - self.v
         self.error_matrix = np.array([u_delta, v_delta])     
 
     def calcualte_image_jacobian(self, Z):
@@ -350,6 +350,8 @@ class RobotController:
         # L_ps_inv = np.linalg.pinv(self.L)
         L_transpose = np.transpose(self.L)
         J_transpose = np.transpose(self.jacobian)
+        # L_transpose = L_ps_inv
+        # J_transpose = J_inv
         r_dot = np.dot((-lam*L_transpose),((self.Z/self.f)*self.error_matrix))
         r_dot = r_dot.round(4)
         q_dot = np.dot(J_transpose,r_dot)
@@ -410,9 +412,8 @@ class RTDEHandler:
         }
         try:
             self.list_to_setp(self.setp, new_setp)
-            print(f"NEW SETP: {new_setp}")
+            # print(f"NEW SETP: {new_setp}")
             self.con.send(self.setp)
-            # self.con.send(self.watchdog)
             res["status"] = 200 # Success
         except rtde.RTDEException:
             res["status"] = 400 # Failure
@@ -421,26 +422,26 @@ class RTDEHandler:
             return res
 
 if __name__ == "__main__":
-    # from time import time
-    # start = time()
-    # q = [-0.12, -0.43, 0.14, 0, 3.11, 0.04]
-    # controller = RobotController(u=10, v=360, f=644)
-    # controller.calculate_error_matrix(300, 360) # pixels
-    # controller.calculate_jacobian(q)
-    # controller.calcualte_image_jacobian(0.15)
-    # q_dot, r_dot = controller.get_r_dot_matrix(0.3)
-    # end = time()
-
-    # print(f"Q_dot: {list(q_dot)}\nR_dot: {list(r_dot)}\nTime taken: {end-start}")
-    host = "localhost" # "10.149.230.20"
+    host = "10.149.230.20"
     port = 30004
-    final_setp = [-0.12, -0.51, 0.21, 0, 3.11, 0.04]
-    config_file = "rdte_config_files/main_config.xml"
-    handler = RTDEHandler(host, port, config_file)
+    init_coords = [480//2, 640//2]
+    f = 644
+    final_setp = [0.72, 0.51, 0.21, 0, 3.11, 0.04]
+    actual_q = [1.998331547, -2.044362684, -1.160939217, -1.470036821, 1.388783932, 1.47571516]
+    # config_file = "rdte_config_files/main_config.xml"
+    # handler = RTDEHandler(host, port, config_file)
     import time
     start = time.time()
-    print(handler.get_data())
-    res = handler.send_control_position(final_setp)
-    print(res)
+    # print(handler.get_data())
+    # res = handler.send_control_position(final_setp)
+    # print(res)
+    controller = RobotController(init_coords, f)
+    controller.calcualte_image_jacobian(0.24)
+    # controller.calcualte_image_jacobian(temp_depth)
+    controller.calculate_jacobian(actual_q)
+    # controller.old_calculate_jacobian(actual_q)
+    controller.calculate_error_matrix(init_coords[0], init_coords[1])
+    q_dot, r_dot = controller.get_r_dot_matrix(lam=0.3)
     end = time.time()
+    print(q_dot)
     print("time diff: ", end-start)
