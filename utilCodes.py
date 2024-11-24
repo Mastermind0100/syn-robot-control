@@ -29,6 +29,7 @@ class SynSinModel:
         self.baseline = 0.15
         self.averages = []
         self.average_depth = 0
+        self.current_depth = 0
         opts = torch.load(model_path)['opts']
         opts.render_ids = [1]
         model = get_model(opts)
@@ -269,20 +270,21 @@ class RobotController:
         self.jacobian = J
 
     def calculate_error_matrix(self, u_detected, v_detected):
-        u_delta = u_detected - self.u
-        v_delta = v_detected - self.v
-        self.error_matrix = np.array([u_delta, v_delta])     
+        u_delta = self.u - u_detected
+        v_delta = self.v - v_detected
+        self.error_matrix = np.array([u_delta, v_delta])
 
     def calcualte_image_jacobian(self, Z):
         self.Z = Z
+        Z=-Z
         self.L[0][0] = -self.f/Z
         self.L[0][2] = self.u/Z
         self.L[0][3] = self.u*self.v/self.f
-        self.L[0][4] = -(self.f+(self.u**2))/self.f
+        self.L[0][4] = -((self.f**2)+(self.u**2))/self.f
         self.L[0][5] = self.v
         self.L[1][1] = -self.f/Z
         self.L[1][2] = self.v/Z
-        self.L[1][3] = self.f+(self.v**2)/self.f
+        self.L[1][3] = ((self.f**2)+(self.v**2))/self.f
         self.L[1][4] = -self.u*self.v/self.f
         self.L[1][5] = -self.u
 
@@ -354,8 +356,25 @@ class RobotController:
         # J_transpose = J_inv
         r_dot = np.dot((-lam*L_transpose),((self.Z/self.f)*self.error_matrix))
         r_dot = r_dot.round(4)
+        # r_dot[0] = -r_dot[0]
+        # r_dot[1] = -r_dot[1]
         q_dot = np.dot(J_transpose,r_dot)
         q_dot = q_dot.round(4)
+
+        # Rm = np.array([
+        #         [-1,  0,  0],
+        #         [ 0, -1,  0],
+        #         [ 0,  0,  1]
+        #     ])
+        
+        # v_qdot = q_dot[:3]
+        # w_qdot = q_dot[3:]
+
+        # new_v_qdot = np.dot(Rm, v_qdot)
+        # new_w_qdot = np.dot(Rm, w_qdot)
+
+        # q_dot = np.hstack((new_v_qdot, new_w_qdot))
+
         return q_dot, r_dot
 
 class RTDEHandler:

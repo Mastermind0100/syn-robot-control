@@ -3,6 +3,7 @@ import socket
 import pickle
 import struct
 import cv2
+import time
 
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect(("localhost", 7080))
@@ -14,7 +15,7 @@ def socket_handler(frame):
     message = struct.pack("Q", len(data)) + data
     client_socket.sendall(message)
 
-def capture_stream(camera_type:str, filepath:str=None):
+def capture_stream(camera_type:str, filepath:str=None, out=None):
     if camera_type == 'rs':
         import pyrealsense2 as rs
         pipeline = rs.pipeline()
@@ -35,10 +36,14 @@ def capture_stream(camera_type:str, filepath:str=None):
 
                 color_image = np.asanyarray(color_frame.get_data())
                 socket_handler(color_image)
+                out.write(color_image)
                 # cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
                 # cv2.imshow('RealSense', color_image)
                 if cv2.waitKey(1) == ord('q'):
                     break
+        
+        except:
+            print("socket terminated")
 
         finally:
             pipeline.stop()
@@ -60,7 +65,12 @@ def capture_stream(camera_type:str, filepath:str=None):
 if __name__ == "__main__":
     camera_type = 'rs'
     filename = 'samples/pot.mp4'
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    filename = str(time.time())
+    out = cv2.VideoWriter(f'test_recordings/{filename}.mp4', fourcc, 30.0, (640, 480))
 
     print("Reading Video Capture...")
-    capture_stream(camera_type, filename)
+    capture_stream(camera_type, out=out)
     print("Done!")
+
+    out.release()
