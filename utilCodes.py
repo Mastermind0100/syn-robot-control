@@ -441,26 +441,7 @@ class RTDEHandler:
             return res
 
 if __name__ == "__main__":
-    host = "10.149.230.20"
-    port = 30004
-    init_coords = [480//2, 640//2]
-    f = 644
-    final_setp = [0.72, 0.51, 0.21, 0, 3.11, 0.04]
-    actual_q = [1.998331547, -2.044362684, -1.160939217, -1.470036821, 1.388783932, 1.47571516]
-    # config_file = "rdte_config_files/main_config.xml"
-    # handler = RTDEHandler(host, port, config_file)
-    import time
-    start = time.time()
-    # print(handler.get_data())
-    # res = handler.send_control_position(final_setp)
-    # print(res)
-    controller = RobotController(init_coords, f)
-    controller.calcualte_image_jacobian(0.24)
-    # controller.calcualte_image_jacobian(temp_depth)
-    controller.calculate_jacobian(actual_q)
-    # controller.old_calculate_jacobian(actual_q)
-    controller.calculate_error_matrix(init_coords[0], init_coords[1])
-    q_dot, r_dot = controller.get_r_dot_matrix(lam=0.3)
-    end = time.time()
-    print(q_dot)
-    print("time diff: ", end-start)
+    img = cv2.imread('input.png')
+    synsin = SynSinModel('modelcheckpoints/realestate/zbufferpts.pth', 644)
+    new_img = synsin.get_pred_frame(img)
+    cv2.imwrite('output.png', new_img)

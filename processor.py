@@ -27,7 +27,7 @@ def run_server():
     temp_depth = 0.15
     flag = False
     init_q = [0,0,0,0,0,0]
-    while True: #and temp_depth > 0:
+    while True:
         while len(data) < payload_size:
             packet = conn.recv(4096)
             if not packet:
@@ -47,16 +47,7 @@ def run_server():
         # Deserialize frame
         frame = pickle.loads(frame_data)
         pred_frame = synsin.get_pred_frame(frame)
-        mid_point_bounding_box = []
-
-        '''
-        IMPORTANT NOTE: WE HAVE TO CHECK THE COORDINATES WHETHER THEY ARE WITH RESPECT TO
-        ORIGINAL FRAME SIZE OR THE RESIZED ONE AFTER THE SYNSIN MODEL TRANSFORMS IT
-        '''
-        # if not flag:
-        #     accept_inp = input("Should we proceed? (Y/N): ")
-        #     if accept_inp == 'Y' or accept_inp == 'y':
-        #         flag = True                
+        mid_point_bounding_box = []         
 
         res_frame = yolo_model.get_bounding_box(frame)
         if res_frame['confidence'] > 0.1:
@@ -70,7 +61,6 @@ def run_server():
 
         cv2.imshow('received frame', frame)
         
-        # print(mid_point_bounding_box)
         if len(mid_point_bounding_box) == 0:
             continue
         
@@ -82,8 +72,6 @@ def run_server():
 
         print(f"Actual Q: {actual_q}, Datatype: {type(actual_q)}")
         controller.calcualte_image_jacobian(synsin.average_depth)
-        # controller.calcualte_image_jacobian(-temp_depth)
-        # controller.calculate_jacobian(actual_q)
         controller.old_calculate_jacobian(actual_q)
         controller.calculate_error_matrix(mid_point_bounding_box[0], mid_point_bounding_box[1])
         print(f"X Diff: {init_coordinates[0]}, {mid_point_bounding_box[0]}")
